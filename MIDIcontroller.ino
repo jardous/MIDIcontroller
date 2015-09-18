@@ -12,7 +12,7 @@
 
 #define LED_PIN 13
 #define DEFAULT_MIDI_CHANNEL 1
-#define BOUNCE_INTERVAL 10  // [ms]
+#define BOUNCE_INTERVAL 10
 
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
@@ -20,29 +20,28 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 #define BOARD_ROWS 4
 #define BOARD_COLS 3
 
-Bounce *buttons[BOARD_ROWS * BOARD_COLS] = {NULL,};
-
 class Button : public Bounce
 {
 
 public:
 
   // constructor
-  Button(uint8_t pin, uint8_t cc, uint8_t value=0, uint8_t channel=DEFAULT_MIDI_CHANNEL)
+  Button(int pin, uint8_t cc, uint8_t value=0, uint8_t channel=DEFAULT_MIDI_CHANNEL)
                                     : m_cc(cc)
                                     , m_value(value)
                                     , m_channel(DEFAULT_MIDI_CHANNEL)
 
   {
-    Bounce::pin = pin;
     pinMode(pin, INPUT_PULLUP);
     attach(pin);
     interval(BOUNCE_INTERVAL);
   }
 
-  bool update() {
+  void update(void) {
     Bounce::update();
-    if (fell()) {
+    if (Bounce::fell()) {
+      Serial.print(pin);
+      Serial.println(" felt");
       MIDI.sendControlChange(m_cc, m_value, m_channel);
     }
   }
@@ -55,9 +54,15 @@ private:
 };
 
 
+Button *buttons[BOARD_ROWS * BOARD_COLS] = {NULL,};
+
 
 
 void setup() {
+  Serial.begin(9600);
+  while (!Serial) {
+    ; // wait for serial port to connect. Needed for Leonardo only
+  }
 
   // add buttons to the array and nstantiate the button objects
   // first row (bottom)
@@ -81,6 +86,8 @@ void setup() {
 
   MIDI.begin();
 }
+
+
 
 void loop() {
   // Update the Bounce instance
