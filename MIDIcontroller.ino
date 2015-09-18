@@ -29,7 +29,7 @@
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 // Instantiate a Bounce object
-Bounce debouncer1x1 = Bounce(); 
+Bounce debouncer1x1 = Bounce();
 Bounce debouncer1x2 = Bounce();
 Bounce debouncer1x3 = Bounce();
 Bounce debouncer1x4 = Bounce();
@@ -39,7 +39,7 @@ Bounce debouncer2x2 = Bounce();
 Bounce debouncer2x3 = Bounce();
 
 Bounce debouncer3x1 = Bounce();
-Bounce debouncer3x2 = Bounce();  
+Bounce debouncer3x2 = Bounce();
 
 void setup() {
 
@@ -48,27 +48,27 @@ void setup() {
   pinMode(BUTTON_1x2, INPUT_PULLUP);
   pinMode(BUTTON_1x3, INPUT_PULLUP);
   pinMode(BUTTON_1x4, INPUT_PULLUP);
-  
+
   pinMode(BUTTON_2x1, INPUT_PULLUP);
   pinMode(BUTTON_2x2, INPUT_PULLUP);
   pinMode(BUTTON_2x3, INPUT_PULLUP);
-  
+
   pinMode(BUTTON_3x1, INPUT_PULLUP);
   pinMode(BUTTON_3x2, INPUT_PULLUP);
-  
+
   // After setting up the button, setup the Bounce instance :
   debouncer1x1.attach(BUTTON_1x1);
   debouncer1x2.attach(BUTTON_1x2);
   debouncer1x3.attach(BUTTON_1x3);
   debouncer1x4.attach(BUTTON_1x4);
-  
+
   debouncer2x1.attach(BUTTON_2x1);
   debouncer2x2.attach(BUTTON_2x2);
   debouncer2x3.attach(BUTTON_2x3);
 
   debouncer3x1.attach(BUTTON_3x1);
   debouncer3x2.attach(BUTTON_3x2);
-  
+
   debouncer1x1.interval(INTERVAL); // interval in ms
   debouncer1x2.interval(INTERVAL);
   debouncer1x3.interval(INTERVAL);
@@ -80,10 +80,10 @@ void setup() {
 
   debouncer3x1.interval(INTERVAL);
   debouncer3x2.interval(INTERVAL);
-  
+
   //Setup the LED
   pinMode(LED_PIN, OUTPUT);
-  
+
   MIDI.begin();
 }
 
@@ -142,7 +142,7 @@ JamUp
     MIDI.sendControlChange(4, 0, MIDI_CHANNEL);
   }
 
-  
+
   if (debouncer2x1.fell()) { // STOMP
     MIDI.sendControlChange(22, 0, MIDI_CHANNEL);
   }
