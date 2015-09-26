@@ -34,6 +34,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 #include "Adafruit_BLE.h"
 #include "Adafruit_BluefruitLE_UART.h"
 #include "BluefruitConfig.h"
+#define __BLE
 
 #ifdef __BLE
 SoftwareSerial bluefruitSS = SoftwareSerial(BLUEFRUIT_SWUART_TXD_PIN, BLUEFRUIT_SWUART_RXD_PIN);
@@ -58,6 +59,8 @@ void BLESendMIDI(unsigned char command, unsigned char param1, unsigned char para
 #endif
 
 
+#include "LEDEffects.h"
+
 // the controller board is 4x3 buttons
 #define BOARD_ROWS 4
 #define BOARD_COLS 3
@@ -81,7 +84,7 @@ public:
 
   void update(void) {
     Bounce::update();
-    if (Bounce::fell()) {
+    if (Bounce::rose()) {
       MIDI.sendControlChange(m_cc, m_value, m_channel);
 #ifdef __BLE
       if (ble.isConnected() != 0) {
@@ -130,9 +133,9 @@ void updateLEDs(void) {
   for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
     if (buttons[i] != NULL) {
         if (buttons[i]->m_state == true)  {
-          strip.setPixelColor(i, strip.Color(50, 0, 0));
+          strip.setPixelColor(i, strip.Color(pulser.m_brightness*5+50, 0, 0));
         } else {
-          strip.setPixelColor(i, ILLUM_DEFAULT);
+          strip.setPixelColor(i, strip.Color(0, pulser.m_brightness+3, 0));
         }
     }
   }
@@ -210,7 +213,6 @@ void setup() {
 }
 
 
-
 void loop() {
   // Update the Bounce instance
   for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
@@ -218,4 +220,5 @@ void loop() {
       buttons[i]->update();
     }
   }
+  pulser.update();
 }
