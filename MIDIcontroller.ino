@@ -65,6 +65,8 @@ void BLESendMIDI(unsigned char command, unsigned char param1, unsigned char para
 #define BOARD_ROWS 4
 #define BOARD_COLS 3
 
+typedef enum { SWITCH, STOMP } ButtonType;
+
 void allSwitchesOff(void);
 
 class Button : public Bounce
@@ -72,7 +74,7 @@ class Button : public Bounce
 
 public:
 
-  Button(uint8_t index, int pin, int type, uint8_t cc,
+  Button(uint8_t index, int pin, ButtonType type, uint8_t cc,
          uint8_t value=0, uint8_t channel=DEFAULT_MIDI_CHANNEL)
                                     : m_index(index) , m_type(type) , m_state(false)
                                     , m_cc(cc), m_value(value), m_channel(DEFAULT_MIDI_CHANNEL)
@@ -97,7 +99,7 @@ public:
       }
       
       // set to off others if this is switch
-      if (m_type == 0) {  // switch
+      if (m_type == SWITCH) {  // switch
         allSwitchesOff();
         m_state = true;
       } else {  // stomp
@@ -109,7 +111,7 @@ public:
   }
 
   uint8_t m_index;
-  int m_type;  // 0 - switch, 1 - stomp
+  ButtonType m_type;  // 0 - switch, 1 - stomp
   bool m_state;
   uint8_t m_interval;
   uint8_t m_cc;
@@ -149,18 +151,18 @@ void setup() {
 
   // add buttons to the array and nstantiate the button objects
   // first row (bottom)
-  buttons[0] = new Button(/*index*/0, /*pin*/2, /*type*/1, /*cc*/1);
-  buttons[1] = new Button(/*index*/1, /*pin*/3, /*type*/1, /*cc*/2);
-  buttons[2] = new Button(/*index*/2, /*pin*/4, /*type*/1, /*cc*/3);
-  buttons[3] = new Button(/*index*/3, /*pin*/5, /*type*/1, /*cc*/4);
+  buttons[0] = new Button(/*index*/0, /*pin*/2, /*type*/STOMP, /*cc*/1);
+  buttons[1] = new Button(/*index*/1, /*pin*/3, /*type*/STOMP, /*cc*/2);
+  buttons[2] = new Button(/*index*/2, /*pin*/4, /*type*/STOMP, /*cc*/3);
+  buttons[3] = new Button(/*index*/3, /*pin*/5, /*type*/STOMP, /*cc*/4);
   // second row
-  buttons[4] = new Button(/*index*/4, /*pin*/6, /*type*/0, /*cc*/21);
-  buttons[5] = new Button(/*index*/5, /*pin*/7, /*type*/0, /*cc*/22);
-  buttons[6] = new Button(/*index*/6, /*pin*/8, /*type*/0, /*cc*/23);
+  buttons[4] = new Button(/*index*/4, /*pin*/6, /*type*/SWITCH, /*cc*/21);
+  buttons[5] = new Button(/*index*/5, /*pin*/7, /*type*/SWITCH, /*cc*/22);
+  buttons[6] = new Button(/*index*/6, /*pin*/8, /*type*/SWITCH, /*cc*/23);
   buttons[7] = NULL;
   // third row (top)
-  buttons[8] = new Button(/*index*/7, /*pin*/A1, /*type*/0, /*cc*/31);
-  buttons[9] = new Button(/*index*/8, /*pin*/A2, /*type*/0, /*cc*/32);
+  buttons[8] = new Button(/*index*/7, /*pin*/A1, /*type*/SWITCH, /*cc*/31);
+  buttons[9] = new Button(/*index*/8, /*pin*/A2, /*type*/SWITCH, /*cc*/32);
   buttons[10] = NULL;
   buttons[11] = NULL;
 
@@ -182,6 +184,7 @@ void setup() {
   {
     error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
   }
+
   Serial.println( F("OK!") );
   // Perform a factory reset to make sure everything is in a known state
   Serial.println(F("Performing a factory reset: "));
@@ -202,6 +205,7 @@ void setup() {
   ble.sendCommandCheckOK("AT+GAPINTERVALS=8,15,250,180");
   ble.sendCommandCheckOK("AT+GAPSETADVDATA=02-01-06-11-06-00-C7-C4-4E-E3-6C-51-A7-33-4B-E8-ED-5A-0E-B8-03");
   ble.sendCommandCheckOK("AT+BLEPOWERLEVEL=4");
+
   ble.reset();
   ble.verbose(false);  // debug info is a little annoying after this point!
 #endif __BLE
