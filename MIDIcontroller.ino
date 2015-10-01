@@ -61,9 +61,9 @@ void BLESendMIDI(unsigned char command, unsigned char param1, unsigned char para
 
 #include "LEDEffects.h"
 
-// the controller board is 4x3 buttons
-#define BOARD_ROWS 4
-#define BOARD_COLS 3
+// the controller board is 3x4 buttons
+#define BOARD_ROWS 3
+#define BOARD_COLS 4
 
 typedef enum { SWITCH, STOMP } ButtonType;
 
@@ -74,9 +74,9 @@ class Button : public Bounce
 
 public:
 
-  Button(uint8_t index, int pin, ButtonType type, uint8_t cc,
+  Button(int pin, ButtonType type, uint8_t cc,
          uint8_t value=0, uint8_t channel=DEFAULT_MIDI_CHANNEL)
-                                    : m_index(index) , m_type(type) , m_state(false)
+                                    : m_type(type) , m_state(false)
                                     , m_cc(cc), m_value(value), m_channel(DEFAULT_MIDI_CHANNEL)
   {
     pinMode(pin, INPUT_PULLUP);
@@ -86,15 +86,15 @@ public:
 
   void update(void) {
     Bounce::update();
-    if (Bounce::rose()) {
+    if (Bounce::fell()) {
       MIDI.sendControlChange(m_cc, m_value, m_channel);
 #ifdef __BLE
       if (ble.isConnected() != 0) {
         Serial.println("sending CC");
-        BLESendMIDI(MIDI_CC, m_index + 1, 0);
+        BLESendMIDI(MIDI_CC, m_cc, 127);
       }
 #endif
-      if (m_index == 8) {
+      if (m_cc == 31) {
         rainbowCycle(5);
       }
       
@@ -105,12 +105,10 @@ public:
       } else {  // stomp
         m_state = !m_state;
       }
-      
       updateLEDs();
     }
   }
 
-  uint8_t m_index;
   ButtonType m_type;  // 0 - switch, 1 - stomp
   bool m_state;
   uint8_t m_interval;
@@ -119,12 +117,12 @@ public:
   uint8_t m_channel;
 };
 
-Button *buttons[BOARD_ROWS * BOARD_COLS] = {NULL,};
+Button *buttons[BOARD_ROWS * BOARD_COLS] = { NULL };
 
 void allSwitchesOff(void) {
   for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
-    if (buttons[i] != NULL) {
-      if (buttons[i]->m_type == 0) {
+    if (buttons[i]) {
+      if (buttons[i]->m_type == SWITCH) {
         buttons[i]->m_state = false;
       }
     }
@@ -132,13 +130,22 @@ void allSwitchesOff(void) {
 }
 
 void updateLEDs(void) {
-  for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
-    if (buttons[i] != NULL) {
+  for (int i=0, ledi=0; i<BOARD_ROWS*BOARD_COLS; i++) {
+    if (buttons[i]) {
         if (buttons[i]->m_state == true)  {
-          strip.setPixelColor(i, strip.Color(pulser.m_brightness*5+50, 0, 0));
+          if (buttons[i]->m_type == SWITCH) {
+            strip.setPixelColor(ledi, strip.Color(pulser.m_brightness*5+90, pulser.m_brightness*5+90, pulser.m_brightness*5+90));
+          } else {  // stomp
+            strip.setPixelColor(ledi, strip.Color(pulser.m_brightness*5+50, 0, 0));
+          }
         } else {
-          strip.setPixelColor(i, strip.Color(0, pulser.m_brightness+3, 0));
+          if (buttons[i]->m_type == SWITCH) {
+            strip.setPixelColor(ledi, strip.Color(0, 0, pulser.m_brightness*2+3));
+          } else {  // stomp
+            strip.setPixelColor(ledi, strip.Color(0, pulser.m_brightness+3, 0));
+          }
         }
+        ledi++;
     }
   }
   strip.show();
@@ -151,18 +158,18 @@ void setup() {
 
   // add buttons to the array and nstantiate the button objects
   // first row (bottom)
-  buttons[0] = new Button(/*index*/0, /*pin*/2, /*type*/STOMP, /*cc*/1);
-  buttons[1] = new Button(/*index*/1, /*pin*/3, /*type*/STOMP, /*cc*/2);
-  buttons[2] = new Button(/*index*/2, /*pin*/4, /*type*/STOMP, /*cc*/3);
-  buttons[3] = new Button(/*index*/3, /*pin*/5, /*type*/STOMP, /*cc*/4);
+  buttons[0] = new Button(/*pin*/2, /*type*/SWITCH, /*cc*/1);
+  buttons[1] = new Button(/*pin*/3, /*type*/STOMP, /*cc*/2);
+  buttons[2] = new Button(/*pin*/4, /*type*/STOMP, /*cc*/3);
+  buttons[3] = new Button(/*pin*/5, /*type*/SWITCH, /*cc*/4);
   // second row
-  buttons[4] = new Button(/*index*/4, /*pin*/6, /*type*/SWITCH, /*cc*/21);
-  buttons[5] = new Button(/*index*/5, /*pin*/7, /*type*/SWITCH, /*cc*/22);
-  buttons[6] = new Button(/*index*/6, /*pin*/8, /*type*/SWITCH, /*cc*/23);
+  buttons[4] = new Button(/*pin*/6, /*type*/STOMP, /*cc*/21);
+  buttons[5] = new Button(/*pin*/7, /*type*/STOMP, /*cc*/22);
+  buttons[6] = new Button(/*pin*/8, /*type*/STOMP, /*cc*/23);
   buttons[7] = NULL;
   // third row (top)
-  buttons[8] = new Button(/*index*/7, /*pin*/A1, /*type*/SWITCH, /*cc*/31);
-  buttons[9] = new Button(/*index*/8, /*pin*/A2, /*type*/SWITCH, /*cc*/32);
+  buttons[8] = new Button(/*pin*/A1, /*type*/STOMP, /*cc*/31);
+  buttons[9] = new Button(/*pin*/A2, /*type*/STOMP, /*cc*/32);
   buttons[10] = NULL;
   buttons[11] = NULL;
 
@@ -179,6 +186,7 @@ void setup() {
   colorWipe(strip.Color(255, 0, 0), 50); // Red
   colorWipe(strip.Color(0, 255, 0), 50); // Green
   colorWipe(strip.Color(0, 0, 255), 50); // Blue
+
 #ifdef __BLE
   if ( !ble.begin(VERBOSE_MODE) )
   {
@@ -207,13 +215,9 @@ void setup() {
   ble.sendCommandCheckOK("AT+BLEPOWERLEVEL=4");
 
   ble.reset();
+
   ble.verbose(false);  // debug info is a little annoying after this point!
 #endif __BLE
-
-  for (int i=0; i<4; i++) {
-    strip.setPixelColor(i, ILLUM_DEFAULT);
-  }
-  strip.show();
 }
 
 

@@ -1,5 +1,5 @@
 
-Adafruit_NeoPixel strip = Adafruit_NeoPixel(4, STRIP_PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel strip = Adafruit_NeoPixel(9, STRIP_PIN, NEO_GRB + NEO_KHZ800);
 
 // Input a value 0 to 255 to get a color value.
 // The colours are a transition r - g - b - back to r.
