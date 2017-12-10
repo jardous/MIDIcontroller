@@ -1,13 +1,11 @@
 #include <SPI.h>
-
+#include <math.h>
 
 #include <MIDI.h>
 #include <midi_Defs.h>
 #include <midi_Message.h>
 #include <midi_Namespace.h>
 #include <midi_Settings.h>
-
-#include <Adafruit_NeoPixel.h>
 
 // Include the Bounce2 library found here:
 // https://github.com/thomasfredericks/Bounce-Arduino-Wiring
@@ -18,8 +16,11 @@
 #define STRIP_PIN A0
 #define DEFAULT_MIDI_CHANNEL 1
 #define MIDI_CC 0xB0
+#define WAH_CC 0x01
 #define BOUNCE_INTERVAL 10
+#define SHARP_PIN A4
 
+// MIDI init
 MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 
 
@@ -28,36 +29,7 @@ MIDI_CREATE_INSTANCE(HardwareSerial, Serial1, MIDI);
 #define ILLUM_DEFAULT strip.Color(0, 5, 0)
 
 
-// BLUETOOTH
-#include <SoftwareSerial.h>
-
-#include "Adafruit_BLE.h"
-#include "Adafruit_BluefruitLE_UART.h"
-#include "BluefruitConfig.h"
-#define __BLE
-
-#ifdef __BLE
-SoftwareSerial bluefruitSS = SoftwareSerial(BLUEFRUIT_SWUART_TXD_PIN, BLUEFRUIT_SWUART_RXD_PIN);
-Adafruit_BluefruitLE_UART ble(bluefruitSS, BLUEFRUIT_UART_MODE_PIN,
-                      BLUEFRUIT_UART_CTS_PIN, BLUEFRUIT_UART_RTS_PIN);
-// A small helper
-void error(const __FlashStringHelper*err) {
-  Serial.println(err);
-}
-
-/*
- * Set the new characteristic value
- * format: AT+GATTCHAR=1,AF-80-XX-YY-ZZ
- * where XX is the command, YY is note and ZZ is velocity
-*/
-void BLESendMIDI(unsigned char command, unsigned char param1, unsigned char param2) {
-    static char *buf = "AT+GATTCHAR=1,AF-80-00-00-00";
-    sprintf(buf+20, "%X-%02X-%02X", command, param1, param2);
-    ble.sendCommandCheckOK(buf);
-    Serial.println(buf);
-}
-#endif
-
+#include "BLEModule.h"
 
 #include "LEDEffects.h"
 
@@ -69,83 +41,140 @@ typedef enum { SWITCH, STOMP } ButtonType;
 
 void allSwitchesOff(void);
 
-class Button : public Bounce
-{
+void sendMIDI(uint8_t cc, uint8_t value, uint8_t channel=DEFAULT_MIDI_CHANNEL) {
+    static char *buf = "   ";
+    sprintf(buf, "%02d-%02d-%02d", cc, value, channel);
+    Serial.println(buf);
 
+    MIDI.sendControlChange(cc, value, channel);
+    //bluetooth.BLESendMIDI(MIDI_CC, cc, value);
+}
+
+#include "Sharp.h"
+
+
+class ButtonBase : public Bounce {
 public:
-
-  Button(int pin, ButtonType type, uint8_t cc,
-         uint8_t value=0, uint8_t channel=DEFAULT_MIDI_CHANNEL)
-                                    : m_type(type) , m_state(false)
-                                    , m_cc(cc), m_value(value), m_channel(DEFAULT_MIDI_CHANNEL)
-  {
-    pinMode(pin, INPUT_PULLUP);
-    attach(pin);
-    interval(BOUNCE_INTERVAL);
+  ButtonBase::ButtonBase(int pin, uint8_t midi_channel) : m_midi_channel(midi_channel) {
+      pinMode(pin, INPUT_PULLUP);
+      attach(pin);
+      interval(BOUNCE_INTERVAL);
+      ledIndex = ledStripIndexCounter;
+      ledStripIndexCounter += 1;
   }
 
-  void update(void) {
+  virtual void update(void) {}
+  virtual void setEnabled(bool state) {}  // stomp
+  virtual void setState(bool state) {}  // switch
+  virtual void resetLED(void) = 0;
+  
+  uint8_t m_midi_channel;
+  int ledIndex;
+private:
+  static int ledStripIndexCounter;
+};
+int ButtonBase::ledStripIndexCounter = 0;
+
+class Stomp : public ButtonBase {
+public:
+  Stomp(int pin, uint8_t cc,
+         bool init_enabled=false, uint8_t on_value=1, uint8_t off_value=0, uint8_t midi_channel=DEFAULT_MIDI_CHANNEL)
+                                    : m_cc(cc)
+                                    , m_onvalue(on_value)
+                                    , m_offvalue(off_value)
+                                    , ButtonBase(pin, midi_channel) {
+    setEnabled(init_enabled);
+  }
+  virtual void update(void) {
     Bounce::update();
+    
     if (Bounce::fell()) {
-      MIDI.sendControlChange(m_cc, m_value, m_channel);
-#ifdef __BLE
-      if (ble.isConnected() != 0) {
-        Serial.println("sending CC");
-        BLESendMIDI(MIDI_CC, m_cc, 127);
-      }
-#endif
+      // set to off others if this is switch
+      setEnabled(!m_enabled);
+      //setState(!m_state);
+
+      uint8_t m_value = m_offvalue;
+      if (m_enabled == true) { m_value = m_onvalue; }
+    
+      /*
       if (m_cc == 31) {
         rainbowCycle(5);
       }
-      
-      // set to off others if this is switch
-      if (m_type == SWITCH) {  // switch
-        allSwitchesOff();
-        m_state = true;
-      } else {  // stomp
-        m_state = !m_state;
-      }
-      updateLEDs();
+      */
+      sendMIDI(m_cc, m_value, m_midi_channel);
+    }
+  }
+  
+  virtual void setEnabled(bool enabled) {
+    m_enabled = enabled;
+    resetLED();
+  }
+  
+  virtual void resetLED(void) {
+    if (m_enabled == true) {
+      strip.setPixelColor(ledIndex, strip.Color(0, pulser.m_brightness*5 + 90, 0));
+    } else {
+      strip.setPixelColor(ledIndex, strip.Color(pulser.m_brightness*3 + 30, pulser.m_brightness*3 + 30, pulser.m_brightness*3 + 30));
     }
   }
 
-  ButtonType m_type;  // 0 - switch, 1 - stomp
-  bool m_state;
-  uint8_t m_interval;
+private:
+  bool m_enabled;
   uint8_t m_cc;
-  uint8_t m_value;
-  uint8_t m_channel;
+  uint8_t m_onvalue;
+  uint8_t m_offvalue;
 };
 
-Button *buttons[BOARD_ROWS * BOARD_COLS] = { NULL };
+
+class Switch : public ButtonBase {
+public:
+  Switch(int pin, uint8_t cc, bool init_state=false, uint8_t midi_channel=DEFAULT_MIDI_CHANNEL)
+                                    : m_cc(cc), ButtonBase(pin, midi_channel) {
+    setState(init_state);
+  }
+  
+  virtual void update(void) {
+    Bounce::update();
+    if (Bounce::fell()) {
+      // set to off others if this is switch
+      allSwitchesOff();
+      setState(true);
+      sendMIDI(m_cc, 1, m_midi_channel);
+    }
+  }
+  
+  virtual void setState(bool state) {
+    m_state = state;
+    resetLED();
+  }
+
+  virtual void resetLED(void) {
+    if (m_state == true) {
+      strip.setPixelColor(ledIndex, strip.Color(pulser.m_brightness*5 + 90, 0, 0));
+    } else {
+      strip.setPixelColor(ledIndex, strip.Color(0, 0, pulser.m_brightness*5 + 20));
+    }
+  }
+
+private:
+  bool m_state;
+  uint8_t m_cc;
+};
+
+ButtonBase *buttons[BOARD_ROWS * BOARD_COLS] = { NULL };
 
 void allSwitchesOff(void) {
   for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
     if (buttons[i]) {
-      if (buttons[i]->m_type == SWITCH) {
-        buttons[i]->m_state = false;
-      }
+        buttons[i]->setState(false);
     }
   }
 }
 
 void updateLEDs(void) {
-  for (int i=0, ledi=0; i<BOARD_ROWS*BOARD_COLS; i++) {
+  for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
     if (buttons[i]) {
-        if (buttons[i]->m_state == true)  {
-          if (buttons[i]->m_type == SWITCH) {
-            strip.setPixelColor(ledi, strip.Color(pulser.m_brightness*5+90, pulser.m_brightness*5+90, pulser.m_brightness*5+90));
-          } else {  // stomp
-            strip.setPixelColor(ledi, strip.Color(pulser.m_brightness*5+50, 0, 0));
-          }
-        } else {
-          if (buttons[i]->m_type == SWITCH) {
-            strip.setPixelColor(ledi, strip.Color(0, 0, pulser.m_brightness*2+3));
-          } else {  // stomp
-            strip.setPixelColor(ledi, strip.Color(0, pulser.m_brightness+3, 0));
-          }
-        }
-        ledi++;
+        buttons[i]->resetLED();
     }
   }
   strip.show();
@@ -157,22 +186,24 @@ void setup() {
   Serial.begin(9600);
 
   // add buttons to the array and nstantiate the button objects
+  
   // first row (bottom)
-  buttons[0] = new Button(/*pin*/2, /*type*/SWITCH, /*cc*/1);
-  buttons[1] = new Button(/*pin*/3, /*type*/STOMP, /*cc*/2);
-  buttons[2] = new Button(/*pin*/4, /*type*/STOMP, /*cc*/3);
-  buttons[3] = new Button(/*pin*/5, /*type*/SWITCH, /*cc*/4);
+  buttons[0] = new Switch(/*pin*/2, /*cc*/50, /*init_state */true);  // performance 1
+  buttons[1] = new Switch(/*pin*/3, /*cc*/51);   // performance 2
+  buttons[2] = new Switch(/*pin*/4, /*cc*/52);  // performance 3
+  buttons[3] = new Switch(/*pin*/5, /*cc*/53);   // performance 4
   // second row
-  buttons[4] = new Button(/*pin*/6, /*type*/STOMP, /*cc*/21);
-  buttons[5] = new Button(/*pin*/7, /*type*/STOMP, /*cc*/22);
-  buttons[6] = new Button(/*pin*/8, /*type*/STOMP, /*cc*/23);
+  buttons[4] = new Stomp(/*pin*/6, /*cc*/18, /*init_state */false);  // stomp B
+  buttons[5] = new Stomp(/*pin*/7, /*cc*/19, /*init_state */false);  // stomp C
+  buttons[6] = new Stomp(/*pin*/8, /*cc*/26, /*init_state */true);  // delay
   buttons[7] = NULL;
   // third row (top)
-  buttons[8] = new Button(/*pin*/A1, /*type*/STOMP, /*cc*/31);
-  buttons[9] = new Button(/*pin*/A2, /*type*/STOMP, /*cc*/32);
+  buttons[8] = new Stomp(/*pin*/A1, /*cc*/31, /*init_state */true);  // Tuner
+  buttons[9] = new Stomp(/*pin*/A2, /*cc*/32, /*init_state */true);  // ???
   buttons[10] = NULL;
   buttons[11] = NULL;
 
+  pinMode(SHARP_PIN, INPUT);
   //Setup the LED
   pinMode(LED_PIN, OUTPUT);
 
@@ -186,39 +217,16 @@ void setup() {
   colorWipe(strip.Color(255, 0, 0), 50); // Red
   colorWipe(strip.Color(0, 255, 0), 50); // Green
   colorWipe(strip.Color(0, 0, 255), 50); // Blue
-
-#ifdef __BLE
-  if ( !ble.begin(VERBOSE_MODE) )
-  {
-    error(F("Couldn't find Bluefruit, make sure it's in CoMmanD mode & check wiring?"));
+  
+  for (int i=0; i<BOARD_ROWS*BOARD_COLS; i++) {
+    if (buttons[i]) {
+        buttons[i]->resetLED();
+    }
   }
-
-  Serial.println( F("OK!") );
-  // Perform a factory reset to make sure everything is in a known state
-  Serial.println(F("Performing a factory reset: "));
-  if (! ble.factoryReset() ){
-       error(F("Couldn't factory reset"));
-  }
-
-  // Disable command echo from Bluefruit
-  ble.echo(false);
-
-  // Print Bluefruit information
-  ble.info();
-
-  // configure GATT services and advertising
-  ble.sendCommandCheckOK("AT+GATTLIST");
-  ble.sendCommandCheckOK("AT+GATTADDSERVICE=UUID128=03-B8-0E-5A-ED-E8-4B-33-A7-51-6C-E3-4E-C4-C7-00");
-  ble.sendCommandCheckOK("AT+GATTADDCHAR=UUID128=77-72-E5-DB-38-68-41-12-A1-A9-F2-66-9D-10-6B-F3,PROPERTIES=0x96,MIN_LEN=1,MAX_LEN=20");
-  ble.sendCommandCheckOK("AT+GAPINTERVALS=8,15,250,180");
-  ble.sendCommandCheckOK("AT+GAPSETADVDATA=02-01-06-11-06-00-C7-C4-4E-E3-6C-51-A7-33-4B-E8-ED-5A-0E-B8-03");
-  ble.sendCommandCheckOK("AT+BLEPOWERLEVEL=4");
-
-  ble.reset();
-
-  ble.verbose(false);  // debug info is a little annoying after this point!
-#endif __BLE
+  
+  //bluetooth.initialize();
 }
+
 
 
 void loop() {
@@ -228,5 +236,10 @@ void loop() {
       buttons[i]->update();
     }
   }
+  updateLEDs();
+  
+  // pulsating effects
   pulser.update();
+  
+  //sharp.update();
 }

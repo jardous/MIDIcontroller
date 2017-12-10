@@ -1,3 +1,4 @@
+﻿#include <Adafruit_NeoPixel.h>
 
 Adafruit_NeoPixel strip = Adafruit_NeoPixel(9, STRIP_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -85,5 +86,3 @@ void theaterChaseRainbow(uint8_t wait) {
     }
   }
 }
-
-
